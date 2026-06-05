@@ -158,15 +158,15 @@ async def _do_search(page, stock_code, stock_name, from_date="", to_date="",
     不再在JS侧做关键词过滤（回避bash中文编码问题）。
     """
 
-    # ── 页面加载（带重试，适配内地→HKEX的波动网络）──
+    # ── 页面加载（带重试，覆盖 timeout / ERR_CONNECTION_CLOSED / ERR_TIMED_OUT 等）──
     for attempt in range(_ANNUAL_SEARCH_RETRIES):
         try:
             await page.goto(HKEX_SEARCH_URL, wait_until="load",
                           timeout=HKEX_PAGE_LOAD_TIMEOUT)
             break
-        except PwTimeout:
+        except Exception:
             if attempt == _ANNUAL_SEARCH_RETRIES - 1:
-                return []
+                raise  # 抛给外层 _search_one 处理
             await asyncio.sleep(RETRY_DELAYS_LONG[attempt])
 
     try:
@@ -265,21 +265,30 @@ async def _do_search(page, stock_code, stock_name, from_date="", to_date="",
 
 
 async def _search_one(browser, stock_code, stock_info, from_date="", to_date="",
-                      max_results=200):
-    context = await browser.new_context(
-        user_agent=DEFAULT_UA, viewport={"width": 1920, "height": 1080}, locale="zh-CN")
-    page = await context.new_page()
-    await page.add_init_script("""
-        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-        window.chrome = {runtime: {}};
-    """)
-    try:
-        results = await _do_search(page, stock_code, stock_info["name"],
-                                   from_date, to_date, max_results)
-        return stock_code, results
-    finally:
-        await context.close()
+                      max_results=200, max_retries=3):
+    """搜索单只股票，带外层重试（覆盖 page.goto 连接错误等）。"""
+    last_err = None
+    for attempt in range(max_retries):
+        context = await browser.new_context(
+            user_agent=DEFAULT_UA, viewport={"width": 1920, "height": 1080}, locale="zh-CN")
+        page = await context.new_page()
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            window.chrome = {runtime: {}};
+        """)
+        try:
+            results = await _do_search(page, stock_code, stock_info["name"],
+                                       from_date, to_date, max_results)
+            return stock_code, results
+        except Exception as e:
+            last_err = e
+            if attempt < max_retries - 1:
+                await asyncio.sleep(RETRY_DELAYS_LONG[attempt])
+        finally:
+            await context.close()
+    print(f"[_search_one] {stock_code}: 重试{max_retries}次后仍失败: {last_err}", file=sys.stderr)
+    return stock_code, []
 
 
 # ── 后处理过滤器 ──
