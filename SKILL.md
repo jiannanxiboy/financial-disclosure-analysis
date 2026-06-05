@@ -194,13 +194,131 @@ python {SD}/generate_excel.py --config "{output_dir}/excel_config.json"
 
 ### 阶段4c — 生成 HTML 分析报告
 
-根据确认后的大纲和数据生成 HTML 报告，写入 `{output_dir}/分析报告.html`。
+分三步完成。
 
-要求：
-- **结构清晰**：按大纲章节组织，每节包含标题、关键数据卡片、简要分析段落
-- **数据准确**：所有数值必须来自 TSV/Excel 中的实际数据，禁止编造
-- **样式**：内嵌 CSS，简洁专业风格，表格和卡片排版清晰，适合打印
-- **内容要素**：汇总数据表、同比变化说明、公司间对比、风险提示
+**Step 1 — 生成图表数据**
+
+```bash
+python {SD}/generate_charts.py --excel "{output_dir}/数据底稿.xlsx" --output "{output_dir}/charts_data.json"
+```
+
+脚本自动从 Excel 透视表提取数据，生成可在 Chart.js 中直接使用的图表配置 JSON。会根据数据自动选择图表类型（柱状图/折线图），覆盖收入利润、毛利率、负债水平、资产结构、现金流等维度。
+
+**Step 2 — 组装 HTML 报告**
+
+使用以下模板骨架，将 `{CHART_JSON}` 和你的分析文字填入对应位置：
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>财务分析报告</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;color:#333;line-height:1.8;max-width:1100px;margin:0 auto;padding:40px 20px;background:#f8f9fa}
+  h1{text-align:center;font-size:28px;color:#2F5496;margin-bottom:8px}
+  h2{font-size:22px;color:#2F5496;border-left:4px solid #2F5496;padding-left:14px;margin:48px 0 20px}
+  h3{font-size:17px;color:#444;margin:24px 0 12px}
+  .subtitle{text-align:center;color:#888;font-size:14px;margin-bottom:40px}
+  .kpi-row{display:flex;gap:16px;flex-wrap:wrap;margin:20px 0}
+  .kpi-card{flex:1;min-width:160px;background:#fff;border-radius:8px;padding:18px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+  .kpi-card .label{font-size:13px;color:#999;margin-bottom:6px}
+  .kpi-card .value{font-size:24px;font-weight:700;color:#2F5496}
+  .kpi-card .change{font-size:13px;color:#888;margin-top:4px}
+  .chart-box{background:#fff;border-radius:8px;padding:24px;margin:24px 0;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+  .chart-box canvas{max-height:380px}
+  p{font-size:15px;margin:10px 0;text-indent:2em}
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:14px}
+  th{background:#2F5496;color:#fff;padding:10px 12px;text-align:center}
+  td{padding:8px 12px;text-align:center;border-bottom:1px solid #e8e8e8}
+  tr:nth-child(even) td{background:#f5f7fa}
+  .risk{background:#fff3f3;border-left:4px solid #dc4e4e;padding:14px 18px;margin:16px 0;border-radius:0 8px 8px 0;font-size:14px}
+  @media print{body{background:#fff;padding:20px}.chart-box{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<h1>财务分析报告</h1>
+<p class="subtitle">覆盖公司：{公司列表}　|　期间：{期间列表}　|　生成日期：{日期}</p>
+
+<!-- ════════ 以下由你按大纲撰写 ════════ -->
+
+<h2>一、公司概况与业务结构</h2>
+<div class="kpi-row">
+  <div class="kpi-card"><div class="label">营业收入(亿)</div><div class="value">...</div></div>
+  <div class="kpi-card"><div class="label">归母净利润(亿)</div><div class="value">...</div></div>
+  <div class="kpi-card"><div class="label">总资产(亿)</div><div class="value">...</div></div>
+</div>
+<p>{分析段落}</p>
+
+<h2>二、盈利能力分析</h2>
+<div class="chart-box"><canvas id="chart_revenue"></canvas></div>
+<p>{分析段落}</p>
+
+<div class="chart-box"><canvas id="chart_margin"></canvas></div>
+<p>{分析段落}</p>
+
+<h2>三、偿债能力与资本结构</h2>
+<div class="chart-box"><canvas id="chart_leverage"></canvas></div>
+<p>{分析段落}</p>
+
+<h2>四、资产质量</h2>
+<div class="chart-box"><canvas id="chart_assetStructure"></canvas></div>
+<p>{分析段落}</p>
+
+<h2>五、现金流状况</h2>
+<div class="chart-box"><canvas id="chart_cashflow"></canvas></div>
+<p>{分析段落}</p>
+
+<h2>六、同业对比与综合评价</h2>
+<table>
+  <thead><tr><th>指标</th>{各公司期间列}</tr></thead>
+  <tbody>{数据行}</tbody>
+</table>
+<p>{综合评价段落}</p>
+
+<div class="risk"><strong>⚠ 风险提示：</strong>{从数据中识别的风险点}</div>
+
+<!-- ════════ 图表初始化脚本（不要修改） ════════ -->
+<script>
+const CHART_DATA = {将 charts_data.json 的内容粘贴在此};
+
+const CHART_COLORS = ['#2F5496','#ED7D31','#449E73','#DC4E4E','#8C64B4','#00AAB4'];
+
+function makeChart(id, cfg) {
+  const canvas = document.getElementById(id);
+  if (!canvas || !cfg) return;
+  if (cfg.datasets) {
+    cfg.datasets.forEach((ds, i) => {
+      if (!ds.backgroundColor) ds.backgroundColor = CHART_COLORS[i % CHART_COLORS.length];
+    });
+  }
+  new Chart(canvas, cfg);
+}
+
+document.querySelectorAll('canvas[id^="chart_"]').forEach(canvas => {
+  const key = canvas.id.replace('chart_', '');
+  const cfg = CHART_DATA.charts[key];
+  if (cfg) makeChart(canvas.id, {type: cfg.type, data: {labels: cfg.labels, datasets: cfg.datasets}, options: cfg.options});
+});
+</script>
+
+</body>
+</html>
+```
+
+**Step 3 — 写入文件**
+
+将组装好的 HTML 写入 `{output_dir}/分析报告.html`。
+
+关键约束：
+- `CHART_DATA` 直接粘贴 `charts_data.json` 的内容，**不修改任何数字**
+- KPI 卡片和表格中的数值也必须来自 Excel，禁止编造
+- 如果 `charts_data.json` 中某个图表缺失（如"现金流"数据不全），对应 `<canvas>` 自动跳过，安全
+- 分析段落是你唯一的创作空间
 
 ---
 
