@@ -25,9 +25,12 @@ HKEX_PAGE_LOAD_TIMEOUT = 90000   # 搜索页面首次加载
 HKEX_TABLE_TIMEOUT = 60000       # 搜索结果表格渲染
 HKEX_PDF_DOWNLOAD_TIMEOUT = 300  # PDF流式下载
 
-# 重试间隔(秒) — 指数递增适配内地→HKEX的波动网络
-RETRY_DELAYS_SHORT = [1, 3, 9]
-RETRY_DELAYS_LONG = [5, 15, 30]
+# 重试间隔(秒) — 指数退避，适配内地→HKEX的波动网络
+RETRY_DELAYS_SHORT = [3, 9, 27]    # 3次重试，总等待约39s
+RETRY_DELAYS_LONG = [5, 15, 30]    # 长间隔，用于页面加载等重操作
+
+# 多代码搜索间隔(秒) — 避免触发服务端限流
+INTER_CODE_DELAY = 2.0
 
 
 def verify_pdf(path: str | Path, min_pages: int = 1) -> bool:

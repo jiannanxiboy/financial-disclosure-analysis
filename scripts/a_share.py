@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import requests
 
 from _common import (
-    DEFAULT_UA, CNINFO_API_TIMEOUT,
+    DEFAULT_UA, CNINFO_API_TIMEOUT, RETRY_DELAYS_SHORT, INTER_CODE_DELAY,
     download_pdf as _download_pdf, poll_for_button, launch_browser,
 )
 
@@ -80,10 +80,20 @@ def _query(stock_code: str, org_id: str, column: str, plate: str,
         "column": column, "plate": plate,
         "category": category, "seDate": se_date, "isHLtitle": "true",
     }
-    resp = requests.post(CNINFO_API, headers=_api_headers(), data=data, timeout=timeout, verify=False)
-    if resp.status_code != 200:
-        return []
-    return (resp.json().get("announcements") or [])
+    for attempt in range(len(RETRY_DELAYS_SHORT) + 1):
+        try:
+            resp = requests.post(CNINFO_API, headers=_api_headers(), data=data, timeout=timeout, verify=False)
+            if resp.status_code == 200:
+                return (resp.json().get("announcements") or [])
+            if resp.status_code >= 500 and attempt < len(RETRY_DELAYS_SHORT):
+                time.sleep(RETRY_DELAYS_SHORT[attempt])
+                continue
+            return []
+        except requests.RequestException:
+            if attempt < len(RETRY_DELAYS_SHORT):
+                time.sleep(RETRY_DELAYS_SHORT[attempt])
+            else:
+                return []
 
 
 # ── orgId ──
@@ -98,17 +108,24 @@ def _discover_stock_info(stock_code: str, timeout: int = 30) -> dict | None:
         "column": column, "plate": plate,
         "category": "category_ndbg_szsh", "searchkey": stock_code, "isHLtitle": "true",
     }
-    try:
-        resp = requests.post(CNINFO_API, headers=_api_headers(), data=data, timeout=timeout, verify=False)
-        if resp.status_code != 200:
-            return None
-        for a in (resp.json().get("announcements") or []):
-            if a.get("secCode") == stock_code:
-                info = {"orgId": a["orgId"], "column": column, "plate": plate, "name": a.get("secName", "")}
-                _cache_set(stock_code, info)
-                return info
-    except Exception:
-        pass
+    for attempt in range(len(RETRY_DELAYS_SHORT) + 1):
+        try:
+            resp = requests.post(CNINFO_API, headers=_api_headers(), data=data, timeout=timeout, verify=False)
+            if resp.status_code == 200:
+                for a in (resp.json().get("announcements") or []):
+                    if a.get("secCode") == stock_code:
+                        info = {"orgId": a["orgId"], "column": column, "plate": plate, "name": a.get("secName", "")}
+                        _cache_set(stock_code, info)
+                        return info
+                return None
+            if resp.status_code >= 500 and attempt < len(RETRY_DELAYS_SHORT):
+                time.sleep(RETRY_DELAYS_SHORT[attempt])
+                continue
+        except requests.RequestException:
+            if attempt < len(RETRY_DELAYS_SHORT):
+                time.sleep(RETRY_DELAYS_SHORT[attempt])
+        except Exception:
+            pass
     return None
 
 
@@ -311,7 +328,9 @@ def main():
 
         year = args.year
         all_results: dict[str, list[dict]] = {}
-        for code in codes:
+        for i, code in enumerate(codes):
+            if i > 0:
+                time.sleep(INTER_CODE_DELAY)
             results = search_by_category(code, category=CATEGORY_ANNUAL, year=year)
             all_results[code] = results
             if not args.download_dir:
@@ -353,7 +372,9 @@ def main():
 
     elif args.cmd == "batch":
         results = {}
-        for code in args.codes:
+        for i, code in enumerate(args.codes):
+            if i > 0:
+                time.sleep(INTER_CODE_DELAY)
             code = code.strip()
             if code:
                 results[code] = search(code, args.keywords, se_date=args.se_date)

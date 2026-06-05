@@ -20,7 +20,7 @@ from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 from _common import (
     DEFAULT_UA, verify_pdf, download_pdf_stream, launch_browser,
     HKEX_PAGE_LOAD_TIMEOUT, HKEX_TABLE_TIMEOUT, HKEX_PDF_DOWNLOAD_TIMEOUT,
-    RETRY_DELAYS_LONG,
+    RETRY_DELAYS_LONG, RETRY_DELAYS_SHORT, INTER_CODE_DELAY,
 )
 
 HKEX_SEARCH_URL = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=zh"
@@ -104,28 +104,31 @@ def lookup_stock_id(code: str, timeout: int = 15) -> dict | None:
         if attempt_code == normalized and attempt_code == code:
             # 相同代码只试一次
             pass
-        try:
-            resp = _get_http().get(
-                HKEX_PREFIX_URL,
-                params={"callback": "j", "lang": "ZH", "type": "A",
-                        "name": attempt_code, "market": "SEHK"},
-                timeout=timeout,
-            )
-            resp.encoding = "utf-8"
-            raw = resp.text.strip()
-            a, b = raw.find("("), raw.rfind(")")
-            if a == -1 or b == -1:
-                continue
-            data = json.loads(raw[a + 1:b])
-            for s in data.get("stockInfo", []):
-                matched_code = s.get("code", "")
-                if matched_code == attempt_code or matched_code == _normalize_code(attempt_code):
-                    info = {"code": matched_code, "name": s.get("name", ""),
-                            "stockId": s.get("stockId")}
-                    _cache_set(normalized, info)  # 统一用标准化key缓存
-                    return info
-        except Exception:
-            continue
+        for retry_idx in range(len(RETRY_DELAYS_SHORT) + 1):
+            try:
+                resp = _get_http().get(
+                    HKEX_PREFIX_URL,
+                    params={"callback": "j", "lang": "ZH", "type": "A",
+                            "name": attempt_code, "market": "SEHK"},
+                    timeout=timeout,
+                )
+                resp.encoding = "utf-8"
+                raw = resp.text.strip()
+                a, b = raw.find("("), raw.rfind(")")
+                if a == -1 or b == -1:
+                    break
+                data = json.loads(raw[a + 1:b])
+                for s in data.get("stockInfo", []):
+                    matched_code = s.get("code", "")
+                    if matched_code == attempt_code or matched_code == _normalize_code(attempt_code):
+                        info = {"code": matched_code, "name": s.get("name", ""),
+                                "stockId": s.get("stockId")}
+                        _cache_set(normalized, info)  # 统一用标准化key缓存
+                        return info
+                break  # 请求成功但未匹配，不重试
+            except (requests.RequestException, json.JSONDecodeError):
+                if retry_idx < len(RETRY_DELAYS_SHORT):
+                    time.sleep(RETRY_DELAYS_SHORT[retry_idx])
     return None
 
 
@@ -477,7 +480,9 @@ def main():
             download_dir = Path(args.download_dir)
             ok_count = 0
             total = 0
-            for code in codes:
+            for i, code in enumerate(codes):
+                if i > 0:
+                    time.sleep(INTER_CODE_DELAY)
                 results = all_filings.get(code, [])
                 if results:
                     r = results[0]
