@@ -58,6 +58,11 @@ playwright install chromium
 - **A股**：`python {SD}/a_share.py search-annual --codes {代码1} {代码2} ... --year {年份} --download-dir "{output_dir}/pdfs"`
 - **港股**：`python {SD}/hk_share.py search-annual --codes "{代码1},{代码2},..." --year {年份} --download-dir "{output_dir}/pdfs"`
 
+`--year` 仅接受单个年份。如需一次处理多个年份，使用 `--years`（A股空格分隔，港股逗号分隔）：
+
+- **A股**：`python {SD}/a_share.py search-annual --codes {代码1} {代码2} ... --years {年1} {年2} {年3} -d "{output_dir}/pdfs"`
+- **港股**：`python {SD}/hk_share.py search-annual --codes "{代码1},{代码2},..." --years {年1} {年2} {年3} -d "{output_dir}/pdfs"`
+
 脚本内部复用浏览器、自动处理限流。输出每家公司搜索和下载结果。
 
 ### 阶段2b — 批量转PDF为TXT（一条命令）
