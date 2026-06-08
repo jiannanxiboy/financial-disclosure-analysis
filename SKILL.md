@@ -262,19 +262,10 @@ python {SD}/generate_excel.py --config "{output_dir}/excel_config.json"
 
 ### 阶段4c — 生成 HTML 分析报告
 
-**Step 1** — 生成图表数据：
+撰写 HTML 报告，写入 `{output_dir}/分析报告.html`：
 
-```bash
-python {SD}/generate_charts.py --excel "{output_dir}/数据底稿.xlsx" --output "{output_dir}/charts_data.json"
-```
-
-脚本从 Excel 生成 Chart.js 图表配置 JSON。如果 Excel 中某些数据不足以支撑图表，脚本会跳过对应图表——此时应手动补充 Chart.js 配置。
-
-**Step 2** — 撰写 HTML 报告，写入 `{output_dir}/分析报告.html`：
-
-- 使用 Chart.js (CDN) 渲染图表，将 `charts_data.json` 内容原样注入 `<script>` 标签作为数据源
+- 使用 Chart.js (CDN) 渲染图表，Chart.js 配置直接在 `<script>` 标签中手写——图表数据来自阶段3e产出的 Excel 数据底稿
 - 按大纲组织章节，每节包含分析段落 + 对应图表
-- 图表 canvas 的 `id` 与 `charts_data.json` 中的 chart key 匹配，初始化脚本自动发现并渲染
 - CSS 样式内嵌，简洁专业，适合打印
 - KPI 卡片和表格数值必须来自 Excel，**禁止编造数字**
 - 分析段落的文字内容由你撰写

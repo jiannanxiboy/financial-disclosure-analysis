@@ -6,3 +6,5 @@ venv/
 *.egg-info/
 dist/
 .DS_Store
+scripts/.hkex_stockid_cache.json
+scripts/.orgid_cache.json
