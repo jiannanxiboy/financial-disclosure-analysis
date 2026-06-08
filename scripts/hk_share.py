@@ -433,7 +433,8 @@ def main():
     p = sub.add_parser("search-annual", help="搜索年报(自动定位，不依赖中文关键词)")
     p.add_argument("--code", help="单股代码")
     p.add_argument("--codes", help="多股代码，逗号分隔")
-    p.add_argument("--year", type=int, default=2025, help="财年(如2025)")
+    p.add_argument("--year", type=int, default=None, help="单年份(如2025)")
+    p.add_argument("--years", type=int, nargs="+", help="多年份(如 2023 2024 2025)")
     p.add_argument("--download-dir", "-d", help="下载目录")
 
     p = sub.add_parser("search-multi", help="并行搜索多只股票")
@@ -466,47 +467,60 @@ def main():
             print("请指定 --code 或 --codes", file=sys.stderr)
             sys.exit(1)
 
-        year = args.year
-        from_date = f"{year + 1}/03/01"
-        to_date = f"{year + 1}/04/30"
+        # 收集年份：--years 优先，其次 --year
+        if args.years:
+            years = args.years
+        elif args.year:
+            years = [args.year]
+        else:
+            print("请指定 --year 或 --years", file=sys.stderr)
+            sys.exit(1)
 
-        all_filings = search_filings_multi_sync(codes, from_date, to_date, max_results=200)
+        for year in years:
+            from_date = f"{year + 1}/03/01"
+            to_date = f"{year + 1}/04/30"
 
-        for code in codes:
-            filings = all_filings.get(code, [])
-            result = find_annual_report(filings)
-            if result:
-                all_filings[code] = [result]  # 替换为过滤后的结果
-                if not args.download_dir:
-                    print(f"[{code}] {json.dumps(result, ensure_ascii=False, indent=2)}")
-            else:
-                all_filings[code] = []
-                if not args.download_dir:
-                    print(f"[{code}] 未找到{year}年报", file=sys.stderr)
+            all_filings = search_filings_multi_sync(codes, from_date, to_date, max_results=200)
 
-        if args.download_dir:
-            from pathlib import Path
-            download_dir = Path(args.download_dir)
-            ok_count = 0
-            total = 0
-            for i, code in enumerate(codes):
-                if i > 0:
-                    time.sleep(INTER_CODE_DELAY)
-                results = all_filings.get(code, [])
-                if results:
-                    r = results[0]
-                    info = lookup_stock_id(code)
-                    name = info["name"] if info else code
-                    fname = f"{_normalize_code(code)}_{name}_{year}年报.pdf"
-                    output = download_dir / fname
-                    ok = download_pdf(r["url"], str(output), timeout=HKEX_PDF_DOWNLOAD_TIMEOUT)
-                    total += 1
-                    if ok:
-                        ok_count += 1
-                    print(f"  {'OK' if ok else 'FAIL'} -> {output}")
+            for code in codes:
+                filings = all_filings.get(code, [])
+                result = find_annual_report(filings)
+                if result:
+                    all_filings[code] = [result]
+                    if not args.download_dir:
+                        print(f"[{code}/{year}] {json.dumps(result, ensure_ascii=False, indent=2)}")
                 else:
-                    print(f"[{code}] 未找到{year}年报，跳过下载", file=sys.stderr)
-            print(f"下载完成: {ok_count}/{total} 成功")
+                    all_filings[code] = []
+                    if not args.download_dir:
+                        print(f"[{code}] 未找到{year}年报", file=sys.stderr)
+
+            if args.download_dir:
+                from pathlib import Path
+                download_dir = Path(args.download_dir)
+                ok_count = 0
+                total = 0
+                for i, code in enumerate(codes):
+                    if i > 0:
+                        time.sleep(INTER_CODE_DELAY)
+                    results = all_filings.get(code, [])
+                    if results:
+                        r = results[0]
+                        info = lookup_stock_id(code)
+                        name = info["name"] if info else code
+                        fname = f"{_normalize_code(code)}_{name}_{year}年报.pdf"
+                        output = download_dir / fname
+                        ok = download_pdf(r["url"], str(output), timeout=HKEX_PDF_DOWNLOAD_TIMEOUT)
+                        total += 1
+                        if ok:
+                            ok_count += 1
+                        print(f"  {'OK' if ok else 'FAIL'} -> {output}")
+                    else:
+                        print(f"[{code}] 未找到{year}年报，跳过下载", file=sys.stderr)
+                print(f"[{year}] 下载完成: {ok_count}/{total} 成功")
+
+            # 年份间间隔（HKEX限流保护）
+            if len(years) > 1:
+                time.sleep(5)
     elif args.cmd == "search-multi":
         codes = [c.strip() for c in args.codes.split(",") if c.strip()]
         print(json.dumps(search_filings_multi_sync(codes, args.from_date, args.to_date,

@@ -23,9 +23,8 @@ finance-skill/
 │   ├── hk_share.py       # 港股年报搜索下载
 │   ├── pdf_to_text.py    # PDF 批量转 TXT
 │   ├── generate_excel.py # TSV → Excel 数据底稿
+│   ├── generate_charts.py # 图表数据JSON
 │   └── _common.py        # 共用工具模块
-└── examples/
-    └── sample_output.md  # 输出示例
 ```
 
 ## 手动使用

@@ -291,7 +291,8 @@ def main():
     sa = sub.add_parser("search-annual", help="搜索年报(按CNINFO分类，不依赖中文关键词)")
     sa.add_argument("--code", help="单股代码")
     sa.add_argument("--codes", nargs="+", help="多股代码（批量搜索+下载）")
-    sa.add_argument("--year", type=int, help="年份(如2025)，不填则返回最新年报")
+    sa.add_argument("--year", type=int, help="单年份(如2025)，不填则返回最新年报")
+    sa.add_argument("--years", type=int, nargs="+", help="多年份(如 2023 2024 2025)")
     sa.add_argument("--json", action="store_true")
     sa.add_argument("--download-dir", "-d", help="下载目录（可选，指定后自动下载第一个结果）")
 
@@ -326,22 +327,30 @@ def main():
             print("请指定 --code 或 --codes", file=sys.stderr)
             sys.exit(1)
 
-        year = args.year
-        all_results: dict[str, list[dict]] = {}
-        for i, code in enumerate(codes):
-            if i > 0:
-                time.sleep(INTER_CODE_DELAY)
-            results = search_by_category(code, category=CATEGORY_ANNUAL, year=year)
-            all_results[code] = results
-            if not args.download_dir:
-                if args.json:
-                    continue
-                elif results:
-                    for r in results:
-                        print(f"[{code}] 标题: {r['title']}\n时间: {r['announcementTime']}\nURL: {r['url']}\n")
-                else:
-                    yr = year if year else "最新"
-                    print(f"[{code}] 未找到{yr}年报", file=sys.stderr)
+        # 收集年份：--years 优先，其次 --year，都不填则为最新
+        if args.years:
+            years = args.years
+        elif args.year:
+            years = [args.year]
+        else:
+            years = [None]   # None = 最新年报
+
+        all_results: dict[str, dict[str, list[dict]]] = {}
+        for yr in years:
+            yr_key = str(yr) if yr else "最新"
+            for i, code in enumerate(codes):
+                if i > 0:
+                    time.sleep(INTER_CODE_DELAY)
+                results = search_by_category(code, category=CATEGORY_ANNUAL, year=yr)
+                all_results.setdefault(code, {})[yr_key] = results
+                if not args.download_dir:
+                    if args.json:
+                        continue
+                    elif results:
+                        for r in results:
+                            print(f"[{code}/{yr_key}] 标题: {r['title']}\n时间: {r['announcementTime']}\nURL: {r['url']}\n")
+                    else:
+                        print(f"[{code}] 未找到{yr_key}年报", file=sys.stderr)
 
         if args.json and not args.download_dir:
             print(json.dumps(all_results, ensure_ascii=False, indent=2))
@@ -349,16 +358,16 @@ def main():
         if args.download_dir:
             download_dir = Path(args.download_dir)
             tasks = []
-            for code, results in all_results.items():
-                if results:
-                    r = results[0]
-                    name = r.get("companyName", "").replace("<em>", "").replace("</em>", "")
-                    fname = f"{code}_{name}_{year}年报.pdf" if name else f"{code}_{year}年报.pdf"
-                    output = download_dir / fname
-                    tasks.append((r["url"], str(output)))
-                else:
-                    yr = year if year else "最新"
-                    print(f"[{code}] 未找到{yr}年报，跳过下载", file=sys.stderr)
+            for code, yr_results in all_results.items():
+                for yr_key, results in yr_results.items():
+                    if results:
+                        r = results[0]
+                        name = r.get("companyName", "").replace("<em>", "").replace("</em>", "")
+                        fname = f"{code}_{name}_{yr_key}年报.pdf" if name else f"{code}_{yr_key}年报.pdf"
+                        output = download_dir / fname
+                        tasks.append((r["url"], str(output)))
+                    else:
+                        print(f"[{code}] 未找到{yr_key}年报，跳过下载", file=sys.stderr)
 
             if tasks:
                 print(f"批量下载 {len(tasks)} 个文件...")
