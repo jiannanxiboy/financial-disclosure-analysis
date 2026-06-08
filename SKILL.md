@@ -1,12 +1,13 @@
 ---
+name: finscout
 description: 下载、提取并分析公司财务报表。支持A股（巨潮资讯网）和港股（港交所披露易），自动下载年报PDF、转TXT、提取指标、生成Excel数据底稿和HTML分析报告。
 ---
 
-# Finance Skill — 财务报表分析与提取
+# finscout — 财务报表分析与提取
 
 ## 适用平台
 
-- **Claude Code**（原生）：克隆到 `.claude/skills/finance/` 自动发现
+- **Claude Code**（原生）：克隆到 `.claude/skills/finscout/` 自动发现
 - **其他 Agent**：将本文件作为 system prompt 注入，`scripts/` 加入 PATH 或 `cd` 到本目录执行
 
 ## 前置依赖
