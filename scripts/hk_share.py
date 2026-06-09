@@ -436,6 +436,7 @@ def main():
     p.add_argument("--year", type=int, default=None, help="单年份(如2025)")
     p.add_argument("--years", type=int, nargs="+", help="多年份(如 2023 2024 2025)")
     p.add_argument("--download-dir", "-d", help="下载目录")
+    p.add_argument("--quiet", "-q", action="store_true", help="静默模式，仅输出下载汇总")
 
     p = sub.add_parser("search-multi", help="并行搜索多只股票")
     p.add_argument("--codes", required=True, help="逗号分隔")
@@ -513,7 +514,8 @@ def main():
                         total += 1
                         if ok:
                             ok_count += 1
-                        print(f"  {'OK' if ok else 'FAIL'} -> {output}")
+                        if not args.quiet:
+                            print(f"  {'OK' if ok else 'FAIL'} -> {output}")
                     else:
                         print(f"[{code}] 未找到{year}年报，跳过下载", file=sys.stderr)
                 print(f"[{year}] 下载完成: {ok_count}/{total} 成功")

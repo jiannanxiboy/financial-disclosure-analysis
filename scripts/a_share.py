@@ -295,6 +295,7 @@ def main():
     sa.add_argument("--years", type=int, nargs="+", help="多年份(如 2023 2024 2025)")
     sa.add_argument("--json", action="store_true")
     sa.add_argument("--download-dir", "-d", help="下载目录（可选，指定后自动下载第一个结果）")
+    sa.add_argument("--quiet", "-q", action="store_true", help="静默模式，仅输出下载汇总")
 
     bp = sub.add_parser("batch", help="批量搜索并下载")
     bp.add_argument("--codes", required=True, nargs="+")
@@ -370,12 +371,14 @@ def main():
                         print(f"[{code}] 未找到{yr_key}年报，跳过下载", file=sys.stderr)
 
             if tasks:
-                print(f"批量下载 {len(tasks)} 个文件...")
+                if not args.quiet:
+                    print(f"批量下载 {len(tasks)} 个文件...")
                 dl_results = download_batch(tasks)
                 ok = sum(1 for v in dl_results.values() if v)
                 print(f"下载完成: {ok}/{len(tasks)} 成功")
-                for path, success in dl_results.items():
-                    print(f"  {'OK' if success else 'FAIL'} -> {path}")
+                if not args.quiet:
+                    for path, success in dl_results.items():
+                        print(f"  {'OK' if success else 'FAIL'} -> {path}")
             if args.json:
                 print(json.dumps(all_results, ensure_ascii=False, indent=2))
 

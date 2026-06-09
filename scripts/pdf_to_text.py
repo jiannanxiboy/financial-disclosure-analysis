@@ -9,12 +9,20 @@ Batch mode uses multiprocessing for parallelism.
 """
 
 import argparse
+import logging
 import os
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
+
+
+def _configure_third_party_logging(verbose: bool = False) -> None:
+    """Suppress noisy parser warnings unless explicitly requested."""
+    level = logging.WARNING if verbose else logging.ERROR
+    for logger_name in ("pdfminer", "pdfplumber"):
+        logging.getLogger(logger_name).setLevel(level)
 
 
 def _display_width(text: str) -> int:
@@ -141,8 +149,9 @@ def _to_native_path(raw: str) -> Path:
 # ── 批量处理 worker ──
 
 def _extract_one(pdf_path: str, output_path: str, include_tables: bool = True,
-                 skip_existing: bool = False) -> dict:
+                 skip_existing: bool = False, verbose: bool = False) -> dict:
     """单个PDF提取的独立入口，供进程池调用。返回结果字典。"""
+    _configure_third_party_logging(verbose)
     t0 = time.perf_counter()
     try:
         if skip_existing and Path(output_path).exists() and Path(output_path).stat().st_size > 0:
@@ -162,7 +171,7 @@ def _extract_one(pdf_path: str, output_path: str, include_tables: bool = True,
 
 def batch_extract(pdf_list: list[tuple[str, str]], include_tables: bool = True,
                   workers: int | None = None, skip_existing: bool = False,
-                  quiet: bool = False) -> dict:
+                  quiet: bool = False, verbose: bool = False) -> dict:
     """并行批量提取PDF，返回汇总统计。"""
     if workers is None:
         cpu_count = os.cpu_count() or 4
@@ -170,7 +179,12 @@ def batch_extract(pdf_list: list[tuple[str, str]], include_tables: bool = True,
         workers = min(4, max(1, cpu_count - 1))
 
     n = len(pdf_list)
-    worker_fn = partial(_extract_one, include_tables=include_tables, skip_existing=skip_existing)
+    worker_fn = partial(
+        _extract_one,
+        include_tables=include_tables,
+        skip_existing=skip_existing,
+        verbose=verbose,
+    )
 
     if not quiet:
         print(f"批量提取: {n} 个文件, {workers} 个工作进程\n")
@@ -230,10 +244,12 @@ def main():
                         help=f"并行进程数（默认: CPU核心数-1且≤4，当前默认 {min(4, max(1, (os.cpu_count() or 4) - 1))}）")
     parser.add_argument("--skip-existing", action="store_true", help="跳过已存在的输出文件")
     parser.add_argument("--quiet", "-q", action="store_true", help="静默模式，仅输出汇总")
+    parser.add_argument("--verbose", action="store_true", help="显示PDF解析库的详细警告日志")
     # 通用
     parser.add_argument("--no-tables", action="store_true", help="跳过表格提取（仅提取文字）")
 
     args = parser.parse_args()
+    _configure_third_party_logging(args.verbose)
 
     # ── 判断模式 ──
     batch_mode = bool(args.input_dir or args.file_list)
@@ -310,6 +326,7 @@ def main():
         workers=args.workers,
         skip_existing=args.skip_existing,
         quiet=args.quiet,
+        verbose=args.verbose,
     )
 
     if summary["fail"] > 0:

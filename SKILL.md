@@ -56,23 +56,23 @@ playwright install chromium
 
 用变量 `SD` 指向本 skill 的 `scripts/` 目录。
 
-- **A股**：`python {SD}/a_share.py search-annual --codes {代码1} {代码2} ... --year {年份} --download-dir "{output_dir}/pdfs"`
-- **港股**：`python {SD}/hk_share.py search-annual --codes "{代码1},{代码2},..." --year {年份} --download-dir "{output_dir}/pdfs"`
+- **A股**：`python {SD}/a_share.py search-annual --codes {代码1} {代码2} ... --year {年份} --download-dir "{output_dir}/pdfs" --quiet`
+- **港股**：`python {SD}/hk_share.py search-annual --codes "{代码1},{代码2},..." --year {年份} --download-dir "{output_dir}/pdfs" --quiet`
 
 `--year` 仅接受单个年份。如需一次处理多个年份，使用 `--years`（A股空格分隔，港股逗号分隔）：
 
-- **A股**：`python {SD}/a_share.py search-annual --codes {代码1} {代码2} ... --years {年1} {年2} {年3} -d "{output_dir}/pdfs"`
-- **港股**：`python {SD}/hk_share.py search-annual --codes "{代码1},{代码2},..." --years {年1} {年2} {年3} -d "{output_dir}/pdfs"`
+- **A股**：`python {SD}/a_share.py search-annual --codes {代码1} {代码2} ... --years {年1} {年2} {年3} -d "{output_dir}/pdfs" --quiet`
+- **港股**：`python {SD}/hk_share.py search-annual --codes "{代码1},{代码2},..." --years {年1} {年2} {年3} -d "{output_dir}/pdfs" --quiet`
 
-脚本内部复用浏览器、自动处理限流。输出每家公司搜索和下载结果。
+脚本内部复用浏览器、自动处理限流。默认使用 `--quiet`，只输出下载汇总和失败/未找到信息；需要核对具体公告标题或下载路径时再去掉 `--quiet`。
 
 ### 阶段2b — 批量转PDF为TXT（一条命令）
 
 ```bash
-python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output_dir}/txt" --skip-existing
+python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output_dir}/txt" --skip-existing --quiet
 ```
 
-这条命令使用多进程并行处理所有PDF，无需逐文件调用。完成后列出每个txt的行数和首页内容片段。
+这条命令使用多进程并行处理所有PDF，无需逐文件调用。默认使用 `--quiet`，只输出汇总结果，避免第三方 PDF 解析库警告刷屏；如需排查具体 PDF 解析问题，可临时加 `--verbose` 查看详细日志。
 
 ### 阶段2c — 制定指标清单
 
@@ -118,7 +118,7 @@ python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output
 
 将公司按 2-3 家一组分批。同市场放一个Batch——A股和港股混在一起子Agent容易用错关键词。
 
-使用 `Agent` 工具并行启动，subagent_type 用 `general-purpose`。
+使用 `Task` 工具并行启动，subagent_type 用 `general`。
 
 **子Agent Prompt 模板**：
 
@@ -285,6 +285,7 @@ python {SD}/generate_excel.py --config "{output_dir}/excel_config.json"
 
 - 只从官方披露渠道下载，原始PDF必须保留
 - 每个数据点可追溯到报告具体位置
+- 确定性脚本默认使用低噪音参数（如 `--quiet`），禁止把下载明细、PDF解析警告、TXT正文片段作为工具输出刷入主会话；需要诊断时再临时开启详细输出
 - 子Agent绝不返回原始文件内容（txt正文、TSV数据），只返回路径和摘要
 - 子Agent遇到无法解决的问题时标记清楚，不编造数据
 
