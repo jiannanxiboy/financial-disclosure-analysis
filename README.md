@@ -78,6 +78,18 @@ $env:PPT_MASTER_HOME = "$HOME\ppt-master"
 python scripts/ppt_master_bridge.py check
 ```
 
+**通过 CC Switch 安装：**
+
+在「Skills → 仓库管理 → 添加仓库」中填写：
+
+```text
+Repository: jiannanxiboy/financial-disclosure-analysis
+Branch: master
+Subdirectory: 留空
+```
+
+仓库根目录就是 Skill 目录；CC Switch 会将其识别为 `financial-disclosure-analysis`。
+
 **使用：**
 
 安装后，在 Claude Code 中输入 `/financial-disclosure-analysis` 即可启动，按提示告诉它要分析的公司和年份即可。
