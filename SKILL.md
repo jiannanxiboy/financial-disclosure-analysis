@@ -1,6 +1,6 @@
 ---
 name: financial-disclosure-analysis
-description: 下载、提取并分析上市公司财务披露，支持A股巨潮资讯网和港股披露易年报下载、PDF转文本、可追溯指标提取、Excel数据底稿，以及通过 hugohe3/ppt-master 生成原生可编辑PPTX财务分析报告。Use when 用户需要批量提取年报/公告财务数据、同行对比、财务分析底稿、管理层演示报告或可编辑PowerPoint报告。
+description: Download, extract, verify, and analyze official financial disclosures from A-share and Hong Kong-listed companies. Use when the user needs source-traceable financial data from annual reports, interim reports, results announcements, or other filings, as well as peer comparisons, period analysis, Excel workpapers, or editable PPTX reports.
 ---
 
 # Financial Disclosure Analysis
