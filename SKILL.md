@@ -1,9 +1,9 @@
 ---
-name: finscout
+name: financial-disclosure-analysis
 description: 下载、提取并分析上市公司财务披露，支持A股巨潮资讯网和港股披露易年报下载、PDF转文本、可追溯指标提取、Excel数据底稿，以及通过 hugohe3/ppt-master 生成原生可编辑PPTX财务分析报告。Use when 用户需要批量提取年报/公告财务数据、同行对比、财务分析底稿、管理层演示报告或可编辑PowerPoint报告。
 ---
 
-# Finscout
+# Financial Disclosure Analysis
 
 将官方财务披露转化为可追溯数据底稿，并将最终报告交由 PPT Master 生成原生可编辑 `.pptx`。
 
@@ -111,8 +111,8 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
   --format ppt169
 ```
 
-桥接脚本会复制后再按 PPT Master 契约使用 `import-sources --move`，不会移动 finscout 原件。
-它同时在项目的 `analysis/finscout_handoff.json` 中记录输入文件 SHA-256 和可用的 PPT Master Git commit。
+桥接脚本会复制后再按 PPT Master 契约使用 `import-sources --move`，不会移动 Financial Disclosure Analysis 原件。
+它同时在项目的 `analysis/financial-disclosure-analysis-handoff.json` 中记录输入文件 SHA-256 和可用的 PPT Master Git commit。
 
 随后读取解析出的 PPT Master `SKILL.md`、`workflows/routing.md` 和其要求的引用文件，按上游当前版本完整执行。不得把 PPT Master 当作普通 Python 库绕过其 Strategist、逐页 SVG 创作、质量检查、`finalize_svg.py` 和 `svg_to_pptx.py` 流程。
 
@@ -126,7 +126,7 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 - `svg_output/` 页数与确认后的大纲一致。
 - 每页通过 SVG 质量检查，无溢出、截断、重叠或不可读字号。
 - 图表和 KPI 与 `数据底稿.xlsx` 抽样核对；关键结论逐条核对。
-- `analysis/finscout_handoff.json` 中的输入哈希与交付时文件一致。
+- `analysis/financial-disclosure-analysis-handoff.json` 中的输入哈希与交付时文件一致。
 - 正式文件位于 PPT Master 项目的 `exports/`，为可在 PowerPoint 中逐元素编辑的 `.pptx`。
 - `svg_final/` 仅作预览和排错，不冒充正式 PPTX 源。
 - Excel 底稿与 PPTX 一并交付；需要 PDF 时从最终 PPTX 另行导出并做分页检查。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Locate PPT Master and prepare a presentation project from finscout outputs."""
+"""Locate PPT Master and prepare a project from financial-disclosure-analysis outputs."""
 
 from __future__ import annotations
 
@@ -158,9 +158,11 @@ def prepare_project(
         raise RuntimeError(f"Could not determine PPT Master project path:\n{init_output}")
     project_dir = Path(match.group(1).strip()).resolve()
 
-    # PPT Master's main workflow requires --move. Stage copies so finscout's
+    # PPT Master's main workflow requires --move. Stage copies so the source
     # evidence and Excel workpaper remain untouched.
-    with tempfile.TemporaryDirectory(prefix="finscout-ppt-handoff-", dir=projects_dir) as tmp:
+    with tempfile.TemporaryDirectory(
+        prefix="financial-disclosure-analysis-ppt-handoff-", dir=projects_dir
+    ) as tmp:
         staging = Path(tmp)
         staged: list[Path] = []
         for source in sources:
@@ -187,14 +189,14 @@ def prepare_project(
             )
 
     manifest = {
-        "integration": "finscout -> ppt-master",
+        "integration": "financial-disclosure-analysis -> ppt-master",
         "ppt_master_skill_dir": str(skill_dir),
         "ppt_master_commit": _git_commit(skill_dir),
         "sources": source_records,
     }
     analysis_dir = project_dir / "analysis"
     analysis_dir.mkdir(parents=True, exist_ok=True)
-    (analysis_dir / "finscout_handoff.json").write_text(
+    (analysis_dir / "financial-disclosure-analysis-handoff.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -210,7 +212,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("check", help="Validate and print the resolved PPT Master skill directory")
 
-    prepare = subparsers.add_parser("prepare", help="Create a PPT Master project and import finscout outputs")
+    prepare = subparsers.add_parser(
+        "prepare",
+        help="Create a PPT Master project and import financial-disclosure-analysis outputs",
+    )
     prepare.add_argument("--project-name", required=True)
     prepare.add_argument("--projects-dir", required=True)
     prepare.add_argument("--source", action="append", default=[], help="Source file to import; repeat as needed")

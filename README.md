@@ -1,4 +1,4 @@
-# Finscout
+# Financial Disclosure Analysis
 
 **下载年报、提取财务数据，并生成原生可编辑 PowerPoint 报告。**
 
@@ -56,13 +56,13 @@
 
 ### 如何使用
 
-Finscout 是一个 AI Agent Skill，可在具备文件读写和命令执行能力的 Agent 环境中运行。最终报告依赖 PPT Master。
+Financial Disclosure Analysis 是一个 AI Agent Skill，可在具备文件读写和命令执行能力的 Agent 环境中运行。最终报告依赖 PPT Master。
 
 **安装：**
 
 ```bash
-git clone https://github.com/jiannanxiboy/finance-skill.git ~/.claude/skills/finscout/
-cd ~/.claude/skills/finscout
+git clone https://github.com/jiannanxiboy/financial-disclosure-analysis.git ~/.claude/skills/financial-disclosure-analysis/
+cd ~/.claude/skills/financial-disclosure-analysis
 pip install -r requirements.txt
 playwright install chromium
 
@@ -80,7 +80,7 @@ python scripts/ppt_master_bridge.py check
 
 **使用：**
 
-安装后，在 Claude Code 中输入 `/finscout` 即可启动，按提示告诉它要分析的公司和年份即可。
+安装后，在 Claude Code 中输入 `/financial-disclosure-analysis` 即可启动，按提示告诉它要分析的公司和年份即可。
 
 **脚本也可独立使用（面向开发者）：**
 
