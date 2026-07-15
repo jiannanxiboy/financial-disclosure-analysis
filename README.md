@@ -1,6 +1,6 @@
 # Finscout
 
-**下载年报、读取报表、提取数据、生成报告——说一声就行。**
+**下载年报、提取财务数据，并生成原生可编辑 PowerPoint 报告。**
 
 你只需要告诉它"分析万科、金茂、华润置地 2023 到 2025 年的财报"，剩下的事情全部自动完成。整个过程分四步：
 
@@ -31,17 +31,18 @@
 - **汇总表**：一张大表，行是各项指标，列是各公司各年份，数值全部是纯数字，可以直接拿来求和、算平均值、做透视分析，不用再手动调整格式
 - **明细表**：每家公司的每个年份各一张表，三列——指标名称、数据、备注（记录了这个数是从报告哪一页找到的，方便需要时翻回去核对）
 
-### 第四步：自动生成图文分析报告
+### 第四步：用 PPT Master 生成可编辑 PowerPoint 报告
 
-最后，系统会生成一份可以直接在浏览器里打开的分析报告（就是平时上网看网页那种文件，双击就能看）。报告内容包括：
+最后，系统把核验后的 Excel 底稿和报告素材交给 [PPT Master](https://github.com/hugohe3/ppt-master)，生成原生可编辑 `.pptx`。报告内容包括：
 
 - **关键数据卡片**：公司概况、核心指标一目了然
 - **图表分析**：柱状图对比各公司收入利润、折线图展示毛利率变化趋势，直观看出谁在增长谁在下滑
 - **文字分析**：盈利能力、偿债能力、资产质量、现金流状况逐项解读
 - **风险提示**：高负债、存货减值、现金流压力等潜在风险自动标注
 - **汇总数据表**：完整的数据底表附在报告末尾，方便查阅具体数字
+- **可编辑元素**：文本、形状、图表和表格可在 PowerPoint 中继续调整
 
-图表是动态生成的，不是拿模板套的——分析三家公司和分析五家公司，图表数量和数据都不一样，完全根据实际情况来。
+报告不是网页截图，也不是每页一张扁平图片。PPT Master 以 SVG 为页面设计源，并导出 DrawingML/原生对象组成的 PowerPoint；图表数量、页面结构和分析结论根据实际数据生成。
 
 ---
 
@@ -49,13 +50,13 @@
 
 以前做一份多公司对标分析，流程是这样的：打开好几个网站 → 逐个下载 PDF → 翻几百页找报表那一页 → 手动抄数字到 Excel → 一个个核对 → 再做图表 → 再写分析。一个下午就过去了，还容易抄错。
 
-现在你只需要一句话告诉它分析哪些公司、哪些年份，就可以去做别的事了。整个过程中大部分时间花在下载 PDF（港交所的服务器在境外，下载有时比较慢）和系统逐页读取几百页报告提取数据上，实际需要你参与的只有两步：开头确认分析范围，中间看一眼报告大纲。一个多小时之后回来，Excel 数据底稿和图文分析报告已经等着你了。数字准确、来源可查、格式统一。
+现在你只需要一句话告诉它分析哪些公司、哪些年份。过程中需要两次明确确认：开头确认分析范围，以及 PPT Master 的报告策略与设计方案确认。完成后会得到可追溯 Excel 底稿和可继续编辑的 PowerPoint 报告。
 
 ---
 
 ### 如何使用
 
-Finscout 是一个 AI Agent Skill，需要在 Claude Code 环境下运行。
+Finscout 是一个 AI Agent Skill，可在具备文件读写和命令执行能力的 Agent 环境中运行。最终报告依赖 PPT Master。
 
 **安装：**
 
@@ -64,6 +65,17 @@ git clone https://github.com/jiannanxiboy/finance-skill.git ~/.claude/skills/fin
 cd ~/.claude/skills/finscout
 pip install -r requirements.txt
 playwright install chromium
+
+git clone https://github.com/hugohe3/ppt-master.git ~/ppt-master
+pip install -r ~/ppt-master/requirements.txt
+export PPT_MASTER_HOME=~/ppt-master
+```
+
+Windows PowerShell 设置环境变量：
+
+```powershell
+$env:PPT_MASTER_HOME = "$HOME\ppt-master"
+python scripts/ppt_master_bridge.py check
 ```
 
 **使用：**
@@ -81,6 +93,9 @@ python scripts/hk_share.py search-annual --codes "00688,01109" --year 2024 --dow
 
 # PDF 转文字
 python scripts/pdf_to_text.py --input-dir ./data/pdfs --output-dir ./data/txt --skip-existing
+
+# 检查 PPT Master 集成
+python scripts/ppt_master_bridge.py check
 ```
 
 完整流程参考 [SKILL.md](SKILL.md)。

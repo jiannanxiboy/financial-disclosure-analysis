@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finscout 财务分析"
+  short_description: "从官方年报提取可追溯财务数据并生成原生可编辑PPTX分析报告"
+  default_prompt: "使用 $finscout 从官方年报提取可追溯财务数据，并通过 PPT Master 生成可编辑PPTX报告。"
