@@ -108,6 +108,9 @@ python scripts/pdf_to_text.py --input-dir ./data/pdfs --output-dir ./data/txt --
 
 # 检查 PPT Master 集成
 python scripts/ppt_master_bridge.py check
+
+# 运行单元与回归测试
+python -m unittest discover -s tests -v
 ```
 
 完整流程参考 [SKILL.md](SKILL.md)。

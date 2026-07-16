@@ -83,6 +83,8 @@ python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output
 
 在对话中展示简洁的“指标 × 公司-期间”Markdown 汇总表。数据单元格只写数字，单位单列，缺失填 `-`。
 
+生成 Excel 时必须通过 TSV 表头、重复指标和单位标准化校验。未知单位或未定义的混合单位属于阻断错误；不得沿用首个非空单位而不换算。
+
 ### 4. 形成报告素材
 
 根据 Excel 和已核验原文编写 `{output_dir}/报告素材.md`。读取 [references/ppt-master-report.md](references/ppt-master-report.md) 获取内容契约、页面建议和质量门。
@@ -127,6 +129,7 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 - 每页通过 SVG 质量检查，无溢出、截断、重叠或不可读字号。
 - 图表和 KPI 与 `数据底稿.xlsx` 抽样核对；关键结论逐条核对。
 - `analysis/financial-disclosure-analysis-handoff.json` 中的输入哈希与交付时文件一致。
+- handoff 清单中的中文原始路径和导入路径可 UTF-8 回读，且导入后哈希与原件一致。
 - 正式文件位于 PPT Master 项目的 `exports/`，为可在 PowerPoint 中逐元素编辑的 `.pptx`。
 - `svg_final/` 仅作预览和排错，不冒充正式 PPTX 源。
 - Excel 底稿与 PPTX 一并交付；需要 PDF 时从最终 PPTX 另行导出并做分页检查。

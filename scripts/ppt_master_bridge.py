@@ -90,6 +90,40 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _locate_imported_source(project_dir: Path, filename: str) -> Path:
+    """Locate one imported source without relying on localized CLI output."""
+    expected = project_dir / "sources" / filename
+    if expected.is_file():
+        return expected
+    matches = [item for item in project_dir.rglob(filename) if item.is_file()]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Could not uniquely locate imported source {filename!r} under {project_dir}; "
+            f"matches={len(matches)}"
+        )
+    return matches[0]
+
+
+def _write_manifest(path: Path, manifest: dict) -> None:
+    """Atomically write UTF-8 JSON and prove Unicode survives a round trip."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.tmp")
+    temp_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        loaded = json.loads(temp_path.read_text(encoding="utf-8"))
+        if loaded != manifest:
+            raise RuntimeError(f"Manifest UTF-8 round-trip verification failed: {path}")
+        temp_path.replace(path)
+        if json.loads(path.read_text(encoding="utf-8")) != manifest:
+            raise RuntimeError(f"Manifest verification after replace failed: {path}")
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def _git_commit(path: Path) -> str | None:
     root_result = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
@@ -127,7 +161,7 @@ def prepare_project(
     projects_dir = projects_dir.expanduser().resolve()
     projects_dir.mkdir(parents=True, exist_ok=True)
     manager = skill_dir / "scripts" / "project_manager.py"
-    source_records: list[dict[str, str]] = []
+    source_records: list[dict[str, object]] = []
     for source in sources:
         resolved = source.expanduser().resolve()
         if not resolved.is_file():
@@ -160,6 +194,7 @@ def prepare_project(
 
     # PPT Master's main workflow requires --move. Stage copies so the source
     # evidence and Excel workpaper remain untouched.
+    staged_names: list[str] = []
     with tempfile.TemporaryDirectory(
         prefix="financial-disclosure-analysis-ppt-handoff-", dir=projects_dir
     ) as tmp:
@@ -174,6 +209,7 @@ def prepare_project(
                 counter += 1
             shutil.copy2(source, target)
             staged.append(target)
+            staged_names.append(target.name)
 
         if staged:
             _run(
@@ -188,17 +224,29 @@ def prepare_project(
                 cwd=skill_dir,
             )
 
+    for record, imported_filename in zip(source_records, staged_names):
+        imported = _locate_imported_source(project_dir, imported_filename)
+        imported_hash = _sha256(imported)
+        if imported_hash != record["sha256"]:
+            raise RuntimeError(
+                f"Imported source hash mismatch: {record['path']} -> {imported} "
+                f"({record['sha256']} != {imported_hash})"
+            )
+        record["imported_path"] = imported.relative_to(project_dir).as_posix()
+        record["imported_sha256"] = imported_hash
+        record["size"] = imported.stat().st_size
+
     manifest = {
+        "schema_version": 1,
         "integration": "financial-disclosure-analysis -> ppt-master",
         "ppt_master_skill_dir": str(skill_dir),
         "ppt_master_commit": _git_commit(skill_dir),
         "sources": source_records,
     }
     analysis_dir = project_dir / "analysis"
-    analysis_dir.mkdir(parents=True, exist_ok=True)
-    (analysis_dir / "financial-disclosure-analysis-handoff.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    _write_manifest(
+        analysis_dir / "financial-disclosure-analysis-handoff.json",
+        manifest,
     )
     return project_dir
 

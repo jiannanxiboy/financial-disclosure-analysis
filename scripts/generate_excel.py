@@ -28,10 +28,10 @@ periods 的 key 为期间标签（如年度"2024"、季度"202403"、"2024H1"等
 兼容旧字段名 years。
 
 TSV格式（每文件一个公司+期间组合）:
-  名称 \t 数据 \t 备注
+  指标名称 \t 数据 \t 备注
 """
 
-import argparse, json, os, sys, re
+import argparse, csv, json, os, sys, re
 from collections import OrderedDict
 
 try:
@@ -59,19 +59,136 @@ THIN_BORDER = Border(
 # 指标行背景色区分：偶数行浅蓝
 STRIPE_FILL = PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid")
 
+HEADER_ALIASES = {
+    "indicator": {"指标名称", "名称", "指标"},
+    "value": {"数据", "金额/比例", "值"},
+    "note": {"备注", "来源备注", "来源"},
+}
+
+MISSING_VALUES = {"", "-", "--", "—", "NA", "N/A", "NULL", "NIL", "不适用", "未披露"}
+
+DEFAULT_INDICATOR_DEFINITIONS = {
+    **{
+        name: {
+            "canonical_unit": "亿",
+            "accepted_units": {
+                "亿": 1,
+                "亿元": 1,
+                "百万元": 0.01,
+                "万元": 0.0001,
+                "元": 0.00000001,
+            },
+        }
+        for name in (
+            "合约销售额", "营业收入", "总资产", "归母权益", "毛利", "归母净利润",
+            "核心净利润", "总负债", "有息负债(借贷总额)", "现金及现金等价物",
+            "经营活动现金流净额", "融资活动现金流净额",
+        )
+    },
+    **{
+        name: {
+            "canonical_unit": "万平方米",
+            "accepted_units": {
+                "万平方米": 1,
+                "万平米": 1,
+                "平方米": 0.0001,
+                "平米": 0.0001,
+            },
+        }
+        for name in (
+            "合约销售面积", "土地储备面积(总计)", "土地储备面积(应占)",
+            "结算面积", "新增土储面积",
+        )
+    },
+    **{
+        name: {
+            "canonical_unit": "%",
+            "accepted_units": {"%": 1, "％": 1},
+        }
+        for name in (
+            "毛利率", "归母净利率", "核心净利率", "加权平均净资产收益率",
+            "资产负债率", "净负债率", "短期借贷占有息负债比", "加权平均融资成本",
+        )
+    },
+    "平均售价": {
+        "canonical_unit": "万元/平方米",
+        "accepted_units": {
+            "万元/平方米": 1,
+            "万元/平米": 1,
+            "万/平方米": 1,
+            "万/平米": 1,
+            "元/平方米": 0.0001,
+            "元/平米": 0.0001,
+        },
+    },
+    "每股基本盈利": {
+        "canonical_unit": "元",
+        "accepted_units": {"元": 1, "人民币元": 1, "分": 0.01},
+    },
+}
+
 
 def parse_value(raw: str) -> tuple:
-    """解析 '1,200亿' → (1200.0, '亿')   '18.5%' → (18.5, '%')"""
-    if not raw or raw.strip() in ("-", "", "NA", "N/A"):
+    """解析披露值，保留尾部单位；支持括号负数和常见缺失标记。"""
+    if raw is None or raw.strip().upper() in MISSING_VALUES:
         return (None, "")
-    s = raw.strip().replace(",", "").replace(" ", "")
-    m = re.match(r'(-?[\d.]+)(.*)', s)
+    s = raw.strip().replace(",", "").replace("，", "").replace(" ", "").replace("　", "")
+    negative_match = re.fullmatch(r"\(([+-]?(?:\d+(?:\.\d*)?|\.\d+))\)(.*)", s)
+    negative = negative_match is not None
+    if negative_match:
+        s = negative_match.group(1) + negative_match.group(2)
+    s = re.sub(r"^(人民币|RMB|CNY|HKD|HK\$|￥|¥)", "", s, flags=re.IGNORECASE)
+    m = re.fullmatch(r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))(.*)', s)
     if m:
         try:
-            return (float(m.group(1)), m.group(2))
+            number = float(m.group(1))
+            return (-number if negative else number, m.group(2).strip())
         except ValueError:
             return (None, s)
     return (None, s)
+
+
+def load_indicator_definitions(config: dict) -> dict:
+    """合并内置单位规则与配置覆盖，返回可直接用于换算的规则。"""
+    definitions = {
+        name: {
+            "canonical_unit": rule["canonical_unit"],
+            "accepted_units": dict(rule["accepted_units"]),
+        }
+        for name, rule in DEFAULT_INDICATOR_DEFINITIONS.items()
+    }
+    for name, rule in config.get("indicator_definitions", {}).items():
+        canonical = str(rule.get("canonical_unit", "")).strip()
+        accepted = rule.get("accepted_units", {})
+        if not canonical or not isinstance(accepted, dict):
+            raise ValueError(f"指标 {name} 的单位定义必须包含 canonical_unit 和 accepted_units")
+        try:
+            conversions = {str(unit).strip(): float(factor) for unit, factor in accepted.items()}
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"指标 {name} 的单位换算系数必须是数字") from exc
+        conversions.setdefault(canonical, 1.0)
+        definitions[name] = {"canonical_unit": canonical, "accepted_units": conversions}
+    return definitions
+
+
+def normalize_value(indicator: str, raw: str, definitions: dict) -> tuple:
+    """把单点数据换算到指标标准单位；未知单位立即报错，避免静默混用。"""
+    number, raw_unit = parse_value(raw)
+    rule = definitions.get(indicator)
+    if number is None:
+        return None, rule["canonical_unit"] if rule else ""
+    if not rule:
+        return number, raw_unit
+    canonical = rule["canonical_unit"]
+    if not raw_unit:
+        return number, canonical
+    factors = rule["accepted_units"]
+    if raw_unit not in factors:
+        raise ValueError(
+            f"指标 {indicator} 的单位 {raw_unit!r} 无法换算为 {canonical!r}；"
+            "请在 indicator_definitions 中补充规则"
+        )
+    return number * factors[raw_unit], canonical
 
 
 def style_header(ws, row, col_count):
@@ -121,26 +238,40 @@ def read_tsv(path: str) -> OrderedDict:
     if not os.path.exists(path):
         print(f"  [WARN] TSV不存在: {path}")
         return data
-    with open(path, "r", encoding="utf-8") as f:
-        lines = f.read().strip().split("\n")
-    if not lines:
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f, delimiter="\t")
+        rows = list(reader)
+    if not rows:
         return data
-    # 跳过header行（如果第一行是"名称\t金额/比例\t备注"）
-    start = 0
-    if lines[0].startswith("名称") and "\t" in lines[0]:
-        start = 1
-    for line in lines[start:]:
-        parts = line.split("\t")
-        if len(parts) >= 2:
-            name = parts[0].strip()
-            val = parts[1].strip()
-            note = parts[2].strip() if len(parts) >= 3 else ""
-            if name:
-                data[name] = (val, note)
+
+    header = [item.strip() for item in rows[0]]
+    indexes = {}
+    for canonical, aliases in HEADER_ALIASES.items():
+        matches = [idx for idx, value in enumerate(header) if value in aliases]
+        if len(matches) > 1:
+            raise ValueError(f"TSV 表头字段重复: {canonical} ({path})")
+        if matches:
+            indexes[canonical] = matches[0]
+    missing = [name for name in ("indicator", "value") if name not in indexes]
+    if missing:
+        raise ValueError(f"TSV 表头缺少必要字段 {missing}: {path}; 实际表头={header}")
+
+    for line_no, row in enumerate(rows[1:], start=2):
+        if not row or not any(item.strip() for item in row):
+            continue
+        name = row[indexes["indicator"]].strip() if indexes["indicator"] < len(row) else ""
+        val = row[indexes["value"]].strip() if indexes["value"] < len(row) else ""
+        note_idx = indexes.get("note")
+        note = row[note_idx].strip() if note_idx is not None and note_idx < len(row) else ""
+        if not name:
+            raise ValueError(f"TSV 第 {line_no} 行缺少指标名称: {path}")
+        if name in data:
+            raise ValueError(f"TSV 第 {line_no} 行指标重复: {name} ({path})")
+        data[name] = (val, note)
     return data
 
 
-def build_pivot(all_data: dict, indicator_order: list) -> tuple:
+def build_pivot(all_data: dict, indicator_order: list, indicator_definitions: dict | None = None) -> tuple:
     """
     all_data: {(公司, 年份): {指标: (值, 备注)}}
     indicator_order: 指标名列表（有序）
@@ -156,6 +287,7 @@ def build_pivot(all_data: dict, indicator_order: list) -> tuple:
         if label not in col_labels:
             col_labels.append(label)
 
+    definitions = indicator_definitions or load_indicator_definitions({})
     rows = []
     for ind in indicator_order:
         # 第一遍：收集所有值并推断单位
@@ -166,17 +298,18 @@ def build_pivot(all_data: dict, indicator_order: list) -> tuple:
                 continue
             vals = all_data.get((co, period), {})
             if ind in vals:
-                num, unit = parse_value(vals[ind][0])
+                num, unit = normalize_value(ind, vals[ind][0], definitions)
                 raw_vals.append((label, num, unit))
             else:
                 raw_vals.append((label, None, ""))
 
-        # 推断该指标的统1单位（取第一个非空值的单位）
-        unit = ""
-        for _, _, u in raw_vals:
-            if u:
-                unit = u
-                break
+        # 有定义时使用标准单位；无定义指标要求原始单位保持一致。
+        unit = definitions.get(ind, {}).get("canonical_unit", "")
+        observed_units = {u for _, num, u in raw_vals if num is not None and u}
+        if not unit and len(observed_units) > 1:
+            raise ValueError(f"指标 {ind} 存在多个单位 {sorted(observed_units)}，但没有单位换算规则")
+        if not unit and observed_units:
+            unit = next(iter(observed_units))
 
         # 至少有一列有数据才保留
         if all(num is None for _, num, _ in raw_vals):
@@ -229,7 +362,7 @@ def write_detail_sheets(wb, all_data: dict):
         ws = wb.create_sheet(title=sheet_name)
 
         # 表头
-        headers = ["名称", "数据", "备注"]
+        headers = ["指标名称", "数据", "备注"]
         for ci, h in enumerate(headers, 1):
             ws.cell(row=1, column=ci, value=h)
         style_header(ws, 1, 3)
@@ -257,6 +390,7 @@ def main():
 
     companies = cfg.get("companies", [])
     indicator_order = cfg.get("indicators", [])
+    indicator_definitions = load_indicator_definitions(cfg)
     output = cfg.get("output", "output.xlsx")
 
     if not companies:
@@ -292,7 +426,7 @@ def main():
     wb = Workbook()
 
     # Sheet 1 — 汇总透视表
-    columns, rows = build_pivot(all_data, final_order)
+    columns, rows = build_pivot(all_data, final_order, indicator_definitions)
     write_pivot_sheet(wb, columns, rows)
     print(f"\n汇总透视表: {len(rows)} 行 × {len(columns)} 列")
 

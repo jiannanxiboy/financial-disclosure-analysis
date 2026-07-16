@@ -69,10 +69,21 @@
       }
     }
   ],
-  "indicators": ["营业收入", "归母净利润", "总资产", "资产负债率"],
+  "indicators": ["营业收入", "归母净利润", "总资产", "资产负债率", "平均售价"],
+  "indicator_definitions": {
+    "平均售价": {
+      "canonical_unit": "万元/平方米",
+      "accepted_units": {
+        "万元/平方米": 1,
+        "元/平方米": 0.0001
+      }
+    }
+  },
   "output": "{output_dir}/数据底稿.xlsx"
 }
 ```
+
+`generate_excel.py` 内置常见金额、面积、比率、平均售价和每股盈利的标准单位规则；`indicator_definitions` 用于覆盖或补充项目特有指标。每个规则必须声明标准单位和允许的原始单位换算系数。出现未知单位、同一未定义指标混用多个单位、重复指标或无效 TSV 表头时必须停止生成，不能静默写入 Excel。
 
 执行：
 
@@ -80,7 +91,9 @@
 python {SD}/generate_excel.py --config "{output_dir}/excel_config.json"
 ```
 
-第一个 Sheet 是指标 × 公司-期间汇总；后续 Sheet 保留名称、数据和来源备注。不要为了排版把分析数据拆成更多 Sheet。
+第一个 Sheet 是指标 × 公司-期间汇总；后续 Sheet 保留指标名称、数据和来源备注。不要为了排版把分析数据拆成更多 Sheet。
+
+汇总 Sheet 使用换算后的标准单位纯数字；明细 Sheet 保留 TSV 原始值和备注，不覆盖原始披露口径。
 
 ## 6. 汇总表格式
 
