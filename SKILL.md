@@ -87,6 +87,8 @@ python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output
 
 生成 Excel 时必须通过 TSV 表头、重复指标和单位标准化校验。未知单位或未定义的混合单位属于阻断错误；不得沿用首个非空单位而不换算。
 
+Excel 生成器同时输出 `normalized_records.json` 和 `validation_summary.json`，并在工作簿第二张生成“校验摘要”。存在阻断错误时停止进入报告阶段；警告、缺失和单位换算必须进入交付说明。
+
 ### 4. 形成报告素材
 
 根据 Excel 和已核验原文编写 `{output_dir}/报告素材.md`。读取 [references/ppt-master-report.md](references/ppt-master-report.md) 获取内容契约、页面建议和质量门。
@@ -101,6 +103,8 @@ python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output
 6. 数据局限、缺失项与来源定位
 
 先核验每个结论都能回指 Excel 或原文，再进入 PPT Master。
+
+读取 [references/report-facts.md](references/report-facts.md)，为执行摘要和结论式标题建立 `{output_dir}/report_claims.json`，再生成 `{output_dir}/report_facts.json`。任一事实性 claim 未通过时不得进入 PPT Master。
 
 ### 5. 交接给 PPT Master
 
@@ -120,6 +124,8 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 
 随后读取解析出的 PPT Master `SKILL.md`、`workflows/routing.md` 和其要求的引用文件，按上游当前版本完整执行。不得把 PPT Master 当作普通 Python 库绕过其 Strategist、逐页 SVG 创作、质量检查、`finalize_svg.py` 和 `svg_to_pptx.py` 流程。
 
+SVG 文件使用 `NN_semantic-name.svg`，例如 `01_cover.svg`、`02_executive-summary.svg`；讲稿使用同名 `.md`。完成上游 SVG finalization 后运行 `export_pptx_variants.py`，同时生成视觉还原优先的 `*_editable_shapes.pptx` 和数据对象优先的 `*_native_charts_tables.pptx`，前者为默认正式交付。
+
 在 PPT Master Step 4 的 ⛔ BLOCKING 设计确认处停止，向用户展示建议并等待明确确认。确认后连续完成非阻塞阶段。
 
 ### 6. 验收与交付
@@ -134,6 +140,7 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 - handoff 清单中的中文原始路径和导入路径可 UTF-8 回读，且导入后哈希与原件一致。
 - 正式文件位于 PPT Master 项目的 `exports/`，为可在 PowerPoint 中逐元素编辑的 `.pptx`。
 - 对正式 PPTX 执行 `validate_pptx.py`，核对页数、讲稿、图表、表格和画布；有 LibreOffice 时同时做跨应用 PDF 渲染。渲染器不可用必须显式记录为 skipped，不能写成已验证。
+- 最后运行 `validate_delivery.py`；只有 `delivery_validation.json` 状态不为 failed 才能交付。
 - `svg_final/` 仅作预览和排错，不冒充正式 PPTX 源。
 - Excel 底稿与 PPTX 一并交付；需要 PDF 时从最终 PPTX 另行导出并做分页检查。
 
@@ -149,6 +156,9 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 | `generate_excel.py` | 从 TSV 生成 Excel 底稿 |
 | `ppt_master_bridge.py` | 定位 PPT Master、初始化项目并安全导入素材 |
 | `validate_pptx.py` | 校验 PPTX 包结构并按条件执行 LibreOffice 渲染 |
+| `report_facts.py` | 生成 Excel 单元格级事实包并校验报告结论 |
+| `export_pptx_variants.py` | 生成形状版和原生图表/表格版 PPTX |
+| `validate_delivery.py` | 一键验收数据、证据链、SVG、handoff 和 PPTX |
 
 ## 故障边界
 

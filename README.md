@@ -31,7 +31,8 @@
 提取出来的数据会生成一份 Excel 表格。表格分两部分：
 
 - **汇总表**：一张大表，行是各项指标，列是各公司各年份，数值全部是纯数字，可以直接拿来求和、算平均值、做透视分析，不用再手动调整格式
-- **明细表**：每家公司的每个年份各一张表，三列——指标名称、数据、备注（记录了这个数是从报告哪一页找到的，方便需要时翻回去核对）
+- **明细表**：每家公司的每个年份各一张表，同时保留原始值/单位、标准值/单位、来源定位和校验状态
+- **校验产物**：同步输出 `normalized_records.json` 和 `validation_summary.json`，发现阻断级错误时不进入 PPT 阶段
 
 ### 第四步：用 PPT Master 生成可编辑 PowerPoint 报告
 
@@ -113,6 +114,15 @@ python scripts/ppt_master_bridge.py check --json
 
 # 检查最终 PPTX；安装 LibreOffice 时自动增加跨应用渲染验证
 python scripts/validate_pptx.py path/to/report.pptx --expected-slides 12 --require-notes
+
+# 从 Excel 固化图表数据与报告结论，并验证结论表达式
+python scripts/report_facts.py --workbook path/to/data.xlsx --claims path/to/claims.json --output path/to/report_facts.json
+
+# 明确导出“可编辑形状优先”和“原生图表/表格”两个 PPTX 版本
+python scripts/export_pptx_variants.py path/to/ppt-master-project --force
+
+# 一键校验数据、事实链、SVG、PPTX 和交接哈希
+python scripts/validate_delivery.py path/to/ppt-master-project --data-dir path/to/data
 
 # 运行单元与回归测试
 python -m unittest discover -s tests -v

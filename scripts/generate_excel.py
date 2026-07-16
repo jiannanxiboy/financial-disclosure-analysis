@@ -33,6 +33,10 @@ TSV格式（每文件一个公司+期间组合）:
 
 import argparse, csv, json, os, sys, re
 from collections import OrderedDict
+from pathlib import Path
+
+from _common import atomic_write_json
+from financial_validation import MetricRecord, validate_records
 
 try:
     from openpyxl import Workbook
@@ -326,6 +330,35 @@ def build_pivot(all_data: dict, indicator_order: list, indicator_definitions: di
     return ["指标", "单位"] + col_labels, rows
 
 
+def build_metric_records(all_data: dict, indicator_definitions: dict, source_paths: dict) -> list[MetricRecord]:
+    records: list[MetricRecord] = []
+    for (company, period), data in all_data.items():
+        for indicator, (raw_value, note) in data.items():
+            raw_number, raw_unit = parse_value(raw_value)
+            normalized_value, normalized_unit = normalize_value(indicator, raw_value, indicator_definitions)
+            if normalized_value is None:
+                status = "missing"
+            elif raw_unit and normalized_unit and raw_unit != normalized_unit:
+                status = "converted"
+            elif indicator in indicator_definitions:
+                status = "normalized"
+            else:
+                status = "raw"
+            records.append(MetricRecord(
+                company=company,
+                period=str(period),
+                indicator=indicator,
+                raw_value=raw_value,
+                raw_unit=raw_unit,
+                normalized_value=normalized_value,
+                normalized_unit=normalized_unit,
+                source_file=source_paths.get((company, period), ""),
+                source_location=note,
+                status=status,
+            ))
+    return records
+
+
 def write_pivot_sheet(wb, columns, rows):
     """写入汇总透视表"""
     ws = wb.active
@@ -347,8 +380,35 @@ def write_pivot_sheet(wb, columns, rows):
     auto_width(ws, len(columns))
 
 
-def write_detail_sheets(wb, all_data: dict):
+def write_validation_sheet(wb, summary: dict):
+    ws = wb.create_sheet(title="校验摘要")
+    headers = ["级别", "类别", "公司", "期间", "指标", "说明"]
+    for ci, value in enumerate(headers, 1):
+        ws.cell(row=1, column=ci, value=value)
+    style_header(ws, 1, len(headers))
+    issues = summary["errors"] + summary["warnings"] + summary["missing"] + summary["conversions"]
+    for ri, issue in enumerate(issues, start=2):
+        values = [
+            issue["severity"], issue["category"], issue["company"], issue["period"],
+            issue["indicator"], issue["message"],
+        ]
+        for ci, value in enumerate(values, 1):
+            ws.cell(row=ri, column=ci, value=value)
+        style_data_row(ws, ri, len(headers), ri % 2 == 0)
+    if not issues:
+        ws.cell(row=2, column=1, value="info")
+        ws.cell(row=2, column=6, value="未发现异常、缺失或单位换算记录")
+        style_data_row(ws, 2, len(headers), False)
+    ws.freeze_panes = "A2"
+    auto_width(ws, len(headers), max_width=60)
+
+
+def write_detail_sheets(wb, all_data: dict, records: list[MetricRecord] | None = None):
     """为每个公司-期间组合写明细Sheet"""
+    record_map = {
+        (record.company, record.period, record.indicator): record
+        for record in (records or [])
+    }
     for (co, period), data in all_data.items():
         sheet_name = f"{co}_{period}"[:31]  # Excel sheet名最长31字符
         if sheet_name in wb.sheetnames:
@@ -362,36 +422,58 @@ def write_detail_sheets(wb, all_data: dict):
         ws = wb.create_sheet(title=sheet_name)
 
         # 表头
-        headers = ["指标名称", "数据", "备注"]
+        headers = ["指标名称", "原始值", "原始单位", "标准值", "标准单位", "来源备注", "状态"]
         for ci, h in enumerate(headers, 1):
             ws.cell(row=1, column=ci, value=h)
-        style_header(ws, 1, 3)
+        style_header(ws, 1, len(headers))
 
         # 数据
         for ri, (name, (val, note)) in enumerate(data.items()):
-            ws.cell(row=ri + 2, column=1, value=name)
-            ws.cell(row=ri + 2, column=2, value=val)
-            ws.cell(row=ri + 2, column=3, value=note)
-            style_data_row(ws, ri + 2, 3, ri % 2 == 1)
+            record = record_map.get((co, str(period), name))
+            values = [
+                name,
+                val,
+                record.raw_unit if record else "",
+                record.normalized_value if record else "",
+                record.normalized_unit if record else "",
+                note,
+                record.status if record else "raw",
+            ]
+            for ci, value in enumerate(values, 1):
+                ws.cell(row=ri + 2, column=ci, value=value)
+            style_data_row(ws, ri + 2, len(headers), ri % 2 == 1)
 
         ws.freeze_panes = "A2"
-        auto_width(ws, 3)
+        auto_width(ws, len(headers))
         # 备注列宽一些
-        ws.column_dimensions["C"].width = 50
+        ws.column_dimensions["F"].width = 50
 
 
 def main():
     parser = argparse.ArgumentParser(description="从TSV生成Excel分析报告")
     parser.add_argument("--config", required=True, help="JSON配置文件路径")
+    parser.add_argument("--output", help="覆盖config中的Excel输出路径")
+    parser.add_argument("--records-output", help="覆盖结构化记录JSON输出路径")
+    parser.add_argument("--validation-output", help="覆盖校验摘要JSON输出路径")
     args = parser.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as f:
+    config_path = Path(args.config).expanduser().resolve()
+    config_dir = config_path.parent
+
+    def resolve_config_path(value):
+        path = Path(value).expanduser()
+        return path if path.is_absolute() else config_dir / path
+
+    with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
     companies = cfg.get("companies", [])
     indicator_order = cfg.get("indicators", [])
     indicator_definitions = load_indicator_definitions(cfg)
-    output = cfg.get("output", "output.xlsx")
+    output = (
+        Path(args.output).expanduser().resolve()
+        if args.output else resolve_config_path(cfg.get("output", "output.xlsx"))
+    )
 
     if not companies:
         print("错误: config中未指定companies")
@@ -400,14 +482,17 @@ def main():
     # ── 读取所有TSV ──
     all_data = OrderedDict()  # {(公司, 期间): {指标: (值, 备注)}}
     all_indicators = OrderedDict()
+    source_paths = {}
 
     for comp in companies:
         name = comp["name"]
         periods = comp.get("periods", comp.get("years", {}))  # 兼容旧字段名
         for period, tsv_path in periods.items():
-            print(f"读取: {name} {period} → {tsv_path}")
-            data = read_tsv(tsv_path)
+            resolved_tsv = resolve_config_path(tsv_path).resolve()
+            print(f"读取: {name} {period} → {resolved_tsv}")
+            data = read_tsv(resolved_tsv)
             all_data[(name, period)] = data
+            source_paths[(name, period)] = str(resolved_tsv)
             for ind in data:
                 all_indicators[ind] = True
             print(f"  提取 {len(data)} 个指标")
@@ -425,19 +510,60 @@ def main():
     # ── 生成Excel ──
     wb = Workbook()
 
+    records = build_metric_records(all_data, indicator_definitions, source_paths)
+    validation_cfg = cfg.get("validation", {})
+    validation_summary = validate_records(
+        records,
+        margin_tolerance=float(validation_cfg.get("margin_tolerance", 0.5)),
+        net_margin_tolerance=float(validation_cfg.get("net_margin_tolerance", 0.2)),
+        balance_tolerance_pct=float(validation_cfg.get("balance_tolerance_pct", 1.0)),
+        yoy_warning_pct=float(validation_cfg.get("yoy_warning_pct", 100.0)),
+    )
+
     # Sheet 1 — 汇总透视表
     columns, rows = build_pivot(all_data, final_order, indicator_definitions)
     write_pivot_sheet(wb, columns, rows)
     print(f"\n汇总透视表: {len(rows)} 行 × {len(columns)} 列")
 
+    write_validation_sheet(wb, validation_summary)
+    print(
+        "校验摘要: "
+        f"错误 {validation_summary['stats']['errors']} / "
+        f"警告 {validation_summary['stats']['warnings']} / "
+        f"缺失 {validation_summary['stats']['missing']}"
+    )
+
     # Sheet 2+ — 各公司明细
-    write_detail_sheets(wb, all_data)
+    write_detail_sheets(wb, all_data, records)
     print(f"明细Sheet: {len(all_data)} 个")
 
     # 保存
-    os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
+    os.makedirs(output.parent, exist_ok=True)
     wb.save(output)
+    output_path = output.resolve()
+    records_output = (
+        Path(args.records_output).expanduser().resolve()
+        if args.records_output else resolve_config_path(
+            cfg.get("records_output", output_path.with_name("normalized_records.json"))
+        )
+    )
+    validation_output = (
+        Path(args.validation_output).expanduser().resolve()
+        if args.validation_output else resolve_config_path(
+            cfg.get("validation_output", output_path.with_name("validation_summary.json"))
+        )
+    )
+    atomic_write_json(records_output, {
+        "schema_version": 1,
+        "records": [record.to_dict() for record in records],
+    })
+    atomic_write_json(validation_output, validation_summary)
     print(f"\nExcel已生成: {output}")
+    print(f"结构化记录: {records_output}")
+    print(f"校验结果: {validation_output}")
+    if validation_summary["errors"]:
+        print("错误: 存在阻断级数据校验问题，禁止进入PPT阶段", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":

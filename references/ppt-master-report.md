@@ -9,6 +9,8 @@
 
 报告素材不得把推测写成事实。原因无法由披露支持时，使用“可能”“需关注”并说明判断依据。
 
+执行摘要和结论式标题先在 `report_claims.json` 中声明，并用 `report_facts.py` 生成单元格级证据。PPT 页面可缩短来源文字，但 claim ID、Excel 单元格和原始来源链必须保留在事实包中。
+
 ## 建议叙事结构
 
 根据分析深度调整页数，不机械套版。标准报告通常包含：
@@ -54,8 +56,9 @@
 3. 在 Strategist 强制确认门展示推荐的受众、页数、结构、风格、配色和图表策略，等待用户确认。
 4. 确认后由主 Agent 严格按上游要求逐页手写 SVG；不得批量脚本生成页面，不得委派 SVG 页面生成。
 5. 运行上游质量检查、`finalize_svg.py` 和 `svg_to_pptx.py`。
-6. 正式交付 `exports/*.pptx`，保留 `svg_output/` 和 `svg_final/` 供追踪与预览。
+6. SVG 与讲稿使用 `NN_semantic-name` 同名规则。正式生成形状版和原生对象版两个 PPTX；以 `*_editable_shapes.pptx` 作为视觉还原优先的默认交付，以 `*_native_charts_tables.pptx` 作为数据编辑辅助版。
 7. 用 `validate_pptx.py` 核对 PPTX 页数、讲稿、图表、表格和画布；检测到 LibreOffice 时执行 PDF 往返渲染并核对页数。没有可用渲染器时记录 skipped，不以结构检查冒充跨应用渲染。
+8. 用 `validate_delivery.py` 汇总数据校验、claim、handoff、SVG quality 和两个 PPTX 版本；状态为 failed 时停止交付。
 
 ## 验收抽样
 

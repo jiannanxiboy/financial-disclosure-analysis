@@ -33,6 +33,15 @@ CAPABILITY_FILES = {
 }
 
 
+def ppt_master_env() -> dict[str, str]:
+    """Keep PPT Master output UTF-8 without breaking Windows locale subprocesses."""
+    return {
+        **os.environ,
+        "PYTHONUTF8": "0" if os.name == "nt" else "1",
+        "PYTHONIOENCODING": "utf-8",
+    }
+
+
 def _normalize_candidate(path: Path) -> Path | None:
     path = path.expanduser().resolve()
     candidates = (path, path / "skills" / "ppt-master")
@@ -92,7 +101,7 @@ def inspect_capabilities(skill_dir: Path) -> dict:
             text=True,
             encoding="utf-8",
             errors="replace",
-            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+            env=ppt_master_env(),
         )
         native_objects = (
             help_result.returncode == 0
@@ -121,7 +130,7 @@ def _run(command: list[str], cwd: Path) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
-        env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        env=ppt_master_env(),
     )
     output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
     if result.returncode:
