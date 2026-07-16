@@ -13,6 +13,20 @@ import ppt_master_bridge
 
 
 class ManifestTests(unittest.TestCase):
+    def test_capability_report_detects_complete_upstream_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp)
+            for relative in ppt_master_bridge.CAPABILITY_FILES.values():
+                path = skill / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# test", encoding="utf-8")
+            exporter = skill / "scripts" / "svg_to_pptx.py"
+            exporter.write_text("parser.add_argument('--native-charts-and-tables')", encoding="utf-8")
+            report = ppt_master_bridge.inspect_capabilities(skill)
+            self.assertTrue(report["compatible"])
+            self.assertTrue(report["capabilities"]["native_charts_and_tables"])
+            self.assertEqual(report["missing"], [])
+
     def test_utf8_manifest_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "分析" / "交接清单.json"

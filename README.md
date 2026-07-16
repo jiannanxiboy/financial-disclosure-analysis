@@ -12,7 +12,7 @@
 
 ### 第二步：自动读懂报表
 
-下载完 PDF 之后，系统先把这几百页的文件转成可读的文字，然后从里面精准提取关键财务数据。包括：
+下载完 PDF 后，系统把文件转成带页码定位的文字，由 Agent 按统一指标表提取数据，并用单位规则、勾稽关系和独立披露位置复核关键值。包括：
 
 - **赚钱能力**：营业收入、毛利、毛利率、净利润、每股收益等
 - **债务水平**：总负债、资产负债率、净负债率、有息负债等
@@ -22,7 +22,9 @@
 
 一共覆盖几十个核心财务指标，基本涵盖了专业研究员做对标分析时需要的全部数据。
 
-不同公司的报表写法不一样——A 股公司用简体中文，港股公司用繁体中文甚至中英双语，科目名称常常不同。比如同一个"营业收入"，有的报告里叫"營業額"，有的叫"收益"。系统会自动识别这些差异，统一成一致的口径，让不同公司的数据可以直接横向比较。
+不同公司的报表写法不一样——A 股公司用简体中文，港股公司用繁体中文甚至中英双语，科目名称常常不同。比如同一个“营业收入”，有的报告里叫“營業額”，有的叫“收益”。Agent 会结合科目映射和原文语境统一指标名；单位转换由确定性规则执行，无法消除的口径差异会显式保留，而不是强行合并。
+
+下载文件按 URL 和内容哈希缓存，相同 PDF 不会反复下载。转文本会生成逐页 `.pages.json` 定位文件；疑似扫描页可自动路由到 OCRmyPDF，工具不可用时标记人工复核。
 
 ### 第三步：自动整理成数据表
 
@@ -107,7 +109,10 @@ python scripts/hk_share.py search-annual --codes "00688,01109" --year 2024 --dow
 python scripts/pdf_to_text.py --input-dir ./data/pdfs --output-dir ./data/txt --skip-existing
 
 # 检查 PPT Master 集成
-python scripts/ppt_master_bridge.py check
+python scripts/ppt_master_bridge.py check --json
+
+# 检查最终 PPTX；安装 LibreOffice 时自动增加跨应用渲染验证
+python scripts/validate_pptx.py path/to/report.pptx --expected-slides 12 --require-notes
 
 # 运行单元与回归测试
 python -m unittest discover -s tests -v

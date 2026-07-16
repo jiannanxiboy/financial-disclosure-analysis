@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -18,7 +19,7 @@ import requests
 from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 
 from _common import (
-    DEFAULT_UA, verify_pdf, download_pdf_stream, launch_browser,
+    DEFAULT_UA, atomic_write_json, verify_pdf, download_pdf_stream, launch_browser,
     HKEX_PAGE_LOAD_TIMEOUT, HKEX_TABLE_TIMEOUT, HKEX_PDF_DOWNLOAD_TIMEOUT,
     RETRY_DELAYS_LONG, RETRY_DELAYS_SHORT, INTER_CODE_DELAY,
 )
@@ -27,6 +28,7 @@ HKEX_SEARCH_URL = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=zh"
 HKEX_PREFIX_URL = "https://www1.hkexnews.hk/search/prefix.do"
 _CACHE_FILE = Path(__file__).resolve().with_name(".hkex_stockid_cache.json")
 _CACHE_TTL = 86400 * 90
+_CACHE_LOCK = threading.Lock()
 
 # 年报搜索重试次数
 _ANNUAL_SEARCH_RETRIES = 3
@@ -44,7 +46,7 @@ def _load_cache() -> dict:
 
 
 def _save_cache(cache: dict):
-    _CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(_CACHE_FILE, cache)
 
 
 def _cache_get(code: str) -> dict | None:
@@ -57,9 +59,10 @@ def _cache_get(code: str) -> dict | None:
 
 
 def _cache_set(code: str, info: dict):
-    cache = _load_cache()
-    cache[code] = {"ts": time.time(), "info": info}
-    _save_cache(cache)
+    with _CACHE_LOCK:
+        cache = _load_cache()
+        cache[code] = {"ts": time.time(), "info": info}
+        _save_cache(cache)
 
 
 # ── HTTP ──

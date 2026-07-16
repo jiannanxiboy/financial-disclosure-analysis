@@ -55,6 +55,7 @@
 4. 确认后由主 Agent 严格按上游要求逐页手写 SVG；不得批量脚本生成页面，不得委派 SVG 页面生成。
 5. 运行上游质量检查、`finalize_svg.py` 和 `svg_to_pptx.py`。
 6. 正式交付 `exports/*.pptx`，保留 `svg_output/` 和 `svg_final/` 供追踪与预览。
+7. 用 `validate_pptx.py` 核对 PPTX 页数、讲稿、图表、表格和画布；检测到 LibreOffice 时执行 PDF 往返渲染并核对页数。没有可用渲染器时记录 skipped，不以结构检查冒充跨应用渲染。
 
 ## 验收抽样
 

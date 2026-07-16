@@ -4,6 +4,7 @@
 import sys
 import json
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import requests
 
 from _common import (
     DEFAULT_UA, CNINFO_API_TIMEOUT, RETRY_DELAYS_SHORT, INTER_CODE_DELAY,
-    download_pdf as _download_pdf, poll_for_button, launch_browser,
+    atomic_write_json, download_pdf as _download_pdf, poll_for_button, launch_browser,
 )
 
 CNINFO_API = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
@@ -27,6 +28,7 @@ CATEGORY_Q3       = "category_rptthird_szsh"   # 三季报
 _CACHE_DIR = Path(__file__).resolve().parent
 _CACHE_FILE = _CACHE_DIR / ".orgid_cache.json"
 _CACHE_TTL = 86400 * 90
+_CACHE_LOCK = threading.Lock()
 
 
 # ── 缓存 ──
@@ -42,7 +44,7 @@ def _load_cache() -> dict:
 
 def _save_cache(cache: dict):
     _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(_CACHE_FILE, cache)
 
 
 def _cache_get(code: str) -> dict | None:
@@ -55,9 +57,10 @@ def _cache_get(code: str) -> dict | None:
 
 
 def _cache_set(code: str, info: dict):
-    cache = _load_cache()
-    cache[code] = {"ts": time.time(), "info": info}
-    _save_cache(cache)
+    with _CACHE_LOCK:
+        cache = _load_cache()
+        cache[code] = {"ts": time.time(), "info": info}
+        _save_cache(cache)
 
 
 # ── API ──

@@ -22,6 +22,16 @@ REQUIRED_FILES = (
     "scripts/svg_to_pptx.py",
 )
 
+CAPABILITY_FILES = {
+    "routing_authority": "workflows/routing.md",
+    "confirm_ui": "scripts/confirm_ui/server.py",
+    "svg_quality_check": "scripts/svg_quality_checker.py",
+    "chart_coordinate_verification": "scripts/svg_position_calculator.py",
+    "chart_verification_workflow": "workflows/verify-charts.md",
+    "svg_finalization": "scripts/finalize_svg.py",
+    "native_pptx_export": "scripts/svg_to_pptx.py",
+}
+
 
 def _normalize_candidate(path: Path) -> Path | None:
     path = path.expanduser().resolve()
@@ -63,6 +73,43 @@ def resolve_ppt_master(explicit: str | None = None) -> Path:
         "and pass --ppt-master-dir, or set PPT_MASTER_HOME.\n"
         f"Checked:\n  - {locations}"
     )
+
+
+def inspect_capabilities(skill_dir: Path) -> dict:
+    """Inspect the upstream workflow contract instead of checking only installation files."""
+    capabilities = {
+        name: (skill_dir / relative).is_file()
+        for name, relative in CAPABILITY_FILES.items()
+    }
+    exporter = skill_dir / "scripts" / "svg_to_pptx.py"
+    native_objects = False
+    if exporter.is_file():
+        help_result = subprocess.run(
+            [sys.executable, str(exporter), "--help"],
+            cwd=skill_dir,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+        native_objects = (
+            help_result.returncode == 0
+            and "--native-charts-and-tables" in help_result.stdout
+        )
+        if not native_objects:
+            exporter_text = exporter.read_text(encoding="utf-8")
+            native_objects = "--native-charts-and-tables" in exporter_text
+    capabilities["native_charts_and_tables"] = native_objects
+    missing = [name for name, available in capabilities.items() if not available]
+    return {
+        "skill_dir": str(skill_dir),
+        "ppt_master_commit": _git_commit(skill_dir),
+        "compatible": not missing,
+        "capabilities": capabilities,
+        "missing": missing,
+    }
 
 
 def _run(command: list[str], cwd: Path) -> str:
@@ -241,6 +288,7 @@ def prepare_project(
         "integration": "financial-disclosure-analysis -> ppt-master",
         "ppt_master_skill_dir": str(skill_dir),
         "ppt_master_commit": _git_commit(skill_dir),
+        "ppt_master_capabilities": inspect_capabilities(skill_dir)["capabilities"],
         "sources": source_records,
     }
     analysis_dir = project_dir / "analysis"
@@ -258,7 +306,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="PPT Master repo root or skills/ppt-master directory; otherwise use PPT_MASTER_HOME/autodiscovery",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("check", help="Validate and print the resolved PPT Master skill directory")
+    check = subparsers.add_parser("check", help="Validate PPT Master workflow capabilities")
+    check.add_argument("--json", action="store_true", help="Print machine-readable capability report")
 
     prepare = subparsers.add_parser(
         "prepare",
@@ -275,8 +324,17 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         skill_dir = resolve_ppt_master(args.ppt_master_dir)
+        capability_report = inspect_capabilities(skill_dir)
+        if not capability_report["compatible"]:
+            raise RuntimeError(
+                "PPT Master installation is missing required workflow capabilities: "
+                + ", ".join(capability_report["missing"])
+            )
         if args.command == "check":
-            print(skill_dir)
+            print(
+                json.dumps(capability_report, ensure_ascii=False, indent=2)
+                if args.json else skill_dir
+            )
             return 0
         sources = [Path(item) for item in args.source]
         if not sources:

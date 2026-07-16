@@ -21,7 +21,7 @@ playwright install chromium
 开始任务前执行：
 
 ```bash
-python scripts/ppt_master_bridge.py check
+python scripts/ppt_master_bridge.py check --json
 ```
 
 如果检查失败，停止报告阶段并给出安装指引；数据下载、提取和 Excel 生成仍可继续。
@@ -68,8 +68,10 @@ python {SD}/hk_share.py search-annual --codes "{代码,...}" --years "{年份,..
 批量转文本：
 
 ```bash
-python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output_dir}/txt" --skip-existing --quiet
+python {SD}/pdf_to_text.py --input-dir "{output_dir}/pdfs" --output-dir "{output_dir}/txt" --skip-existing --ocr-mode auto --quiet
 ```
+
+下载器默认按 URL 和内容 SHA-256 复用本机缓存；用 `FINANCIAL_DISCLOSURE_CACHE_DIR` 改变位置，或用 `FINANCIAL_DISCLOSURE_NO_CACHE=1` 禁用。转文本同时生成同名 `.pages.json`，记录逐页字符范围、文本密度、表格数、源文件哈希和 OCR 状态。若 OCRmyPDF 不可用或 OCR 后仍有低文本页，将其列入人工复核，不能把空页视为未披露。
 
 需要排错时才启用详细日志。不要把下载明细、解析警告或 TXT 正文刷入主会话。
 
@@ -131,6 +133,7 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 - `analysis/financial-disclosure-analysis-handoff.json` 中的输入哈希与交付时文件一致。
 - handoff 清单中的中文原始路径和导入路径可 UTF-8 回读，且导入后哈希与原件一致。
 - 正式文件位于 PPT Master 项目的 `exports/`，为可在 PowerPoint 中逐元素编辑的 `.pptx`。
+- 对正式 PPTX 执行 `validate_pptx.py`，核对页数、讲稿、图表、表格和画布；有 LibreOffice 时同时做跨应用 PDF 渲染。渲染器不可用必须显式记录为 skipped，不能写成已验证。
 - `svg_final/` 仅作预览和排错，不冒充正式 PPTX 源。
 - Excel 底稿与 PPTX 一并交付；需要 PDF 时从最终 PPTX 另行导出并做分页检查。
 
@@ -145,11 +148,12 @@ python {SD}/ppt_master_bridge.py --ppt-master-dir "{ppt_master_dir}" prepare \
 | `pdf_to_text.py` | 批量 PDF 转 TXT |
 | `generate_excel.py` | 从 TSV 生成 Excel 底稿 |
 | `ppt_master_bridge.py` | 定位 PPT Master、初始化项目并安全导入素材 |
+| `validate_pptx.py` | 校验 PPTX 包结构并按条件执行 LibreOffice 渲染 |
 
 ## 故障边界
 
 - 官方渠道下载失败：列出公告、期间、失败原因和重试情况。
-- PDF 无法解析：保留 PDF，标记需人工/OCR处理，不猜测数值。
+- PDF 无法解析或 `.pages.json` 标记 `needs_ocr`：保留 PDF，尝试 OCRmyPDF；工具不可用或处理后仍异常则标记人工复核，不猜测数值。
 - PPT Master 未安装：完成数据和 Excel，停止 PPT 报告阶段并给出明确安装命令。
 - PPTX 导出失败：保留 PPT Master 项目及 `svg_output/`，按其 failure-recovery 流程处理，不回退为 HTML 正式报告。
 - 涉及未公开资料、个人信息或内部敏感数据：提醒用户确认脱敏和共享范围。
